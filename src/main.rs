@@ -1,8 +1,12 @@
+#[macro_use]
+extern crate diesel;
+
 use std::io;
 use termion::{raw::IntoRawMode, screen::AlternateScreen};
 use tui::backend::TermionBackend;
 use tui::Terminal;
 
+mod db;
 mod events;
 mod models;
 mod process;

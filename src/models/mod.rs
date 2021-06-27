@@ -1,32 +1,46 @@
-mod tomato_model;
+mod input_model;
 mod inventory_model;
-pub mod navitab_model;
+mod navitab_model;
+mod tomato_model;
 
 use crate::{
-    models::inventory_model::{Inventory, Task},
-    process::ProcessHandle,
+    db::{Inventory, NewInventory, NewTask, Task, Tomato},
+    events::Key,
+    process::{ProcessHandle, ProcessMsg},
 };
 
 use inventory_model::InventoryModel;
 
-use super::events::Key;
-use tomato_model::Tomato;
-use navitab_model::{NavitabModel, TabType};
+pub use input_model::{InputContext, InputModel};
+pub use navitab_model::{NavitabModel, TabType};
+pub use tomato_model::TomatoModel;
 
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 pub enum AppMsg {
     Notify(String),
+    CloseTomato(Box<Tomato>),
+    NewInventory(Box<Inventory>),
+    NewTask(Box<Task>),
+    InputEnd,
 }
 
 #[derive(Clone)]
-pub struct AppHanlde {
+pub struct AppHandle {
     sender: UnboundedSender<AppMsg>,
 }
 
-impl AppHanlde {
+impl AppHandle {
+    pub fn send(&self, msg: AppMsg) {
+        let _ = self.sender.send(msg);
+    }
+
     pub fn notify(&self, msg: String) {
-        let _ = self.sender.send(AppMsg::Notify(msg));
+        self.send(AppMsg::Notify(msg));
+    }
+
+    pub fn close_tomato(&self, tomato: Box<Tomato>) {
+        self.send(AppMsg::CloseTomato(tomato));
     }
 }
 
@@ -36,77 +50,59 @@ pub struct AppBuilder {}
 impl AppBuilder {
     pub fn build(self) -> App {
         let (sender, receiver) = unbounded_channel();
-
-        let app_handle = AppHanlde { sender };
-
+        let app_handle = AppHandle { sender };
         let process_handle = ProcessHandle::new(app_handle.clone());
-
-        let inventory = InventoryModel {
-            task_selected: vec![None, None],
-            inventory_selected: None,
-            inventory_list: vec![
-                Inventory {
-                    name: "Code".to_owned(),
-                    color: tui::style::Color::Blue,
-                },
-                Inventory {
-                    name: "English".to_owned(),
-                    color: tui::style::Color::Magenta,
-                },
-            ],
-            tasks_list: vec![
-                vec![
-                    Task {
-                        name: "Rust".to_owned(),
-                        tomato_minutes: 120,
-                        crate_date: "2021-6-1".to_owned(),
-                        notes: "".to_owned(),
-                    },
-                    Task {
-                        name: "Golang".to_owned(),
-                        tomato_minutes: 98,
-                        crate_date: "2021-4-8".to_owned(),
-                        notes: "".to_owned(),
-                    },
-                ],
-                Vec::new(),
-            ],
-        };
 
         App {
             receiver,
             process_handle: process_handle.clone(),
             active_blocks: Vec::new(),
-            inventory,
-            ongoing_tomato_idx: None,
-            tomato: Tomato::new(app_handle, process_handle),
+            inventory: InventoryModel::new(),
+            tomato: TomatoModel::new(app_handle.clone(), process_handle.clone()),
             tabs: NavitabModel::new(),
             notify: None,
+            input: InputModel::new(app_handle, process_handle),
         }
     }
 }
 
-type InventoryLocaction = (usize, usize);
 pub struct App {
     pub receiver: UnboundedReceiver<AppMsg>,
     pub process_handle: ProcessHandle,
     active_blocks: Vec<ActiveBlock>,
     pub inventory: InventoryModel,
-    pub ongoing_tomato_idx: Option<InventoryLocaction>,
-    pub tomato: Tomato,
+    pub tomato: TomatoModel,
     pub tabs: NavitabModel,
     pub notify: Option<String>,
+    pub input: InputModel,
 }
 
 impl App {
     pub fn process_msg(&mut self, msg: AppMsg) {
+        use AppMsg::*;
         match msg {
-            AppMsg::Notify(s) => self.notify(s),
-        }
-    }
+            Notify(s) => self.notify = Some(s),
+            CloseTomato(mut t) => {
+                // Can't get this shit done in app.tomato, 'cause have to get info from inventory.
+                // con: App is too heavy.
+                if let Some((iidx, tidx)) = self.tomato.where_idx() {
+                    t.inventory_id = self.inventory.inventory_list[iidx].id;
 
-    fn notify(&mut self, msg: String) {
-        self.notify = Some(msg);
+                    let task = &mut self.inventory.tasks_list[iidx][tidx];
+                    t.task_id = task.id;
+                    task.spent_minutes += t.end_time - t.start_time;
+                }
+
+                self.process_handle.close_tomato(t);
+            }
+            NewInventory(inv) => {
+                self.inventory.push_new_inventory(*inv);
+            }
+            NewTask(task) => {
+                self.inventory.push_new_task(*task);
+            }
+            InputEnd => self.pop_block(),
+        }
     }
 
     pub fn on_tick(&mut self) {
@@ -137,7 +133,8 @@ impl App {
         match self.active_block() {
             ActiveBlock::Navitab => navi_handle(self, key),
             ActiveBlock::InventoryList => inventory_list_handle(self, key),
-            ActiveBlock::InventoryTaskList => inventory_task_handle(self, key),
+            ActiveBlock::TaskList => inventory_task_handle(self, key),
+            ActiveBlock::Input => self.input.on_key(key),
         }
     }
 }
@@ -171,10 +168,24 @@ fn inventory_list_handle(app: &mut App, key: Key) {
         Key::Down => app.inventory.next_inventory(),
         Key::Right | Key::Char('\n') => {
             if app.inventory.inventory_selected.is_some() {
-                app.push_block(ActiveBlock::InventoryTaskList);
+                app.push_block(ActiveBlock::TaskList);
             }
         }
         Key::Esc => app.pop_block(),
+        Key::Ctrl('n') => {
+            app.push_block(ActiveBlock::Input);
+            let inv = Box::new(NewInventory::default());
+            app.input.set_context(InputContext::Inventory(inv));
+        }
+        Key::Char('d') => {
+            if let Some(idx) = app.inventory.inventory_selected {
+                let inv = app.inventory.inventory_list.remove(idx);
+                app.inventory.task_selected.remove(idx);
+                app.inventory.tasks_list.remove(idx);
+                app.inventory.next_inventory();
+                app.process_handle.send(ProcessMsg::DeleteInventory(inv.id));
+            }
+        }
         _ => {}
     }
 }
@@ -183,14 +194,28 @@ fn inventory_task_handle(app: &mut App, key: Key) {
     match key {
         Key::Up => app.inventory.previous_task(),
         Key::Down => app.inventory.next_task(),
-        Key::Right | Key::Char('\n') => {
+        Key::Char('\n') => {
             if let Some(loc) = app.inventory.get_task_location() {
-                app.ongoing_tomato_idx = Some(loc);
+                app.tomato.set_where_idx(loc);
                 app.reset_block();
                 app.tabs.next();
             }
         }
         Key::Esc | Key::Left => app.pop_block(),
+        Key::Ctrl('n') => {
+            app.push_block(ActiveBlock::Input);
+            let mut task = Box::new(NewTask::default());
+            let idx = app.inventory.inventory_selected.unwrap();
+            task.inventory_id = app.inventory.inventory_list[idx].id;
+            app.input.set_context(InputContext::Task(task));
+        }
+        Key::Char('d') => {
+            if let Some((iidx, tidx)) = app.inventory.get_task_location() {
+                let task = app.inventory.tasks_list[iidx].remove(tidx);
+                app.inventory.next_task();
+                app.process_handle.send(ProcessMsg::DeleteTask(task.id));
+            }
+        }
         _ => {}
     }
 }
@@ -199,5 +224,6 @@ fn inventory_task_handle(app: &mut App, key: Key) {
 pub enum ActiveBlock {
     Navitab,
     InventoryList,
-    InventoryTaskList,
+    TaskList,
+    Input,
 }

@@ -1,7 +1,5 @@
 use super::widgets::Countdown;
-use crate::models::navitab_model::TabType;
-use crate::models::ActiveBlock;
-use crate::models::App;
+use crate::models::{ActiveBlock, App, InputContext, TabType};
 
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -10,6 +8,7 @@ use tui::text::{Span, Spans};
 use tui::widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Tabs};
 use tui::Frame;
 
+use chrono::TimeZone;
 use unicode_width::UnicodeWidthStr;
 
 const COUNTDOWN_SIZES: &[(u16, u16, u16, u16)] = &[
@@ -70,9 +69,36 @@ pub fn draw_app<B: Backend>(f: &mut Frame<B>, app: &App) {
         TabType::Statistics => draw_statistic_tab(f, app, chunks[1]),
     };
 
+    if app.input.is_active() {
+        draw_input(f, app, f.size());
+    }
+
     if let Some(msg) = &app.notify {
         draw_popup(f, msg, f.size());
     }
+}
+
+fn draw_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
+    let mut area = centered_rect(50, 90, area);
+    let pad = area.height.saturating_sub(3) / 2;
+    if pad == 0 {
+        return;
+    }
+    area.height = 3;
+    area.y += pad;
+
+    let paragraph = Paragraph::new(app.input.content()).block(
+        Block::default()
+            .title(match app.input.unwrap_cxt() {
+                InputContext::Inventory(_) => "New inventory entry",
+                InputContext::Task(_) => "New task",
+            })
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::Yellow))
+            .borders(Borders::all()),
+    );
+    f.render_widget(paragraph, area);
+    f.set_cursor(area.x + app.input.content().width() as u16 + 1, area.y + 1);
 }
 
 fn draw_popup<B: Backend>(f: &mut Frame<B>, msg: &str, area: Rect) {
@@ -128,7 +154,7 @@ fn draw_inventory_list<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .iter()
         .map(|i| {
             let item = Spans::from(vec![
-                Span::styled("●", Style::default().fg(i.color)),
+                Span::styled("●", Style::default().fg(i.color.into())),
                 Span::raw(" "),
                 Span::raw(&i.name),
             ]);
@@ -175,13 +201,17 @@ fn draw_task_list<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .enumerate()
         .map(|(idx, t)| {
             let mut line = t.name.clone();
-            let padding = " ".repeat(width.saturating_sub(t.crate_date.width() + line.width()));
+            let date = chrono::Local
+                .timestamp(t.create_at, 0)
+                .format("%Y-%-m-%-d")
+                .to_string();
+            let padding = " ".repeat(width.saturating_sub(date.width() + line.width()));
             line.push_str(&padding);
-            line.push_str(&t.crate_date);
+            line.push_str(&date);
 
             let mut list_item = vec![
                 Spans::from(line),
-                Spans::from(format!("🍅 {} minutes", t.tomato_minutes)),
+                Spans::from(format!("🍅 {} minutes", t.spent_minutes)),
             ];
 
             if idx < task_last_idx {
@@ -194,7 +224,7 @@ fn draw_task_list<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         })
         .collect();
 
-    let border_type = thick_border_or_not(app, ActiveBlock::InventoryTaskList);
+    let border_type = thick_border_or_not(app, ActiveBlock::TaskList);
 
     let list = List::new(items)
         .block(
@@ -217,7 +247,7 @@ fn draw_statistic_tab<B: Backend>(f: &mut Frame<B>, _app: &App, area: Rect) {
 
 fn draw_tomato_tab<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let countdown_area = draw_countdown(f, app, area);
-   
+
     // debug info
     f.render_widget(
         Paragraph::new(format!(
@@ -252,7 +282,6 @@ fn draw_countdown<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) -> Rect {
         wh,
     );
 
-
     let (m, s) = app.tomato.min_and_sec();
     f.render_widget(
         Countdown::default()
@@ -263,7 +292,7 @@ fn draw_countdown<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) -> Rect {
         count_area,
     );
 
-    if let Some((iidx, tidx)) = app.ongoing_tomato_idx {
+    if let Some((iidx, tidx)) = app.tomato.where_idx() {
         let mut task_info = app.inventory.inventory_list[iidx].name.clone() + " · ";
         task_info.push_str(&app.inventory.tasks_list[iidx][tidx].name);
 
@@ -274,10 +303,12 @@ fn draw_countdown<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) -> Rect {
             width: area.width,
             height: 1,
         };
-    
-        f.render_widget(Paragraph::new(task_info).alignment(Alignment::Center), info_area);
+
+        f.render_widget(
+            Paragraph::new(task_info).alignment(Alignment::Center),
+            info_area,
+        );
     }
 
-    
     count_area
 }

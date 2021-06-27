@@ -1,5 +1,4 @@
-use tui::style::Color;
-
+use crate::db::{DbUtils, Inventory, Task};
 pub struct InventoryModel {
     pub inventory_selected: Option<usize>,
     pub task_selected: Vec<Option<usize>>,
@@ -8,7 +7,33 @@ pub struct InventoryModel {
 }
 
 impl InventoryModel {
-    
+    pub fn new() -> Self {
+        let inventory_list = DbUtils::all_inventory();
+        let tasks_list = DbUtils::all_task_groupby(&inventory_list);
+        assert_eq!(inventory_list.len(), tasks_list.len());
+        InventoryModel {
+            task_selected: vec![None; tasks_list.len()],
+            inventory_selected: None,
+            inventory_list,
+            tasks_list,
+        }
+    }
+
+    pub fn push_new_inventory(&mut self, inv: Inventory) {
+        self.inventory_list.push(inv);
+        self.task_selected.push(None);
+        self.tasks_list.push(Vec::new());
+    }
+
+    pub fn push_new_task(&mut self, task: Task) {
+        for (idx, inv) in self.inventory_list.iter().enumerate() {
+            if inv.id == task.inventory_id {
+                self.tasks_list[idx].push(task);
+                return;
+            }
+        }
+    }
+
     pub fn get_task_location(&self) -> Option<(usize, usize)> {
         if let Some(iidx) = self.inventory_selected {
             if let Some(tidx) = self.task_selected[iidx] {
@@ -57,16 +82,4 @@ impl InventoryModel {
             self.task_selected[idx] = self.previous(self.task_selected[idx], &self.tasks_list[idx]);
         }
     }
-}
-
-pub struct Inventory {
-    pub name: String,
-    pub color: Color,
-}
-
-pub struct Task {
-    pub name: String,
-    pub tomato_minutes: usize,
-    pub crate_date: String,
-    pub notes: String,
 }

@@ -1,11 +1,14 @@
-use std::time::Duration;
-
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
-use crate::models::AppHanlde;
+use crate::db::{DbUtils, NewInventory, NewTask, Tomato};
+use crate::models::{AppHandle, AppMsg};
 
 pub enum ProcessMsg {
-    TomatoClose,
+    TomatoClose(Box<Tomato>),
+    CreateInventory(Box<NewInventory>),
+    DeleteInventory(i32),
+    CreateTask(Box<NewTask>),
+    DeleteTask(i32),
 }
 
 #[derive(Clone)]
@@ -19,7 +22,7 @@ async fn run_process(mut process: Process) {
 }
 
 impl ProcessHandle {
-    pub fn new(app_handle: AppHanlde) -> Self {
+    pub fn new(app_handle: AppHandle) -> Self {
         let (sender, receiver) = unbounded_channel();
 
         let process = Process {
@@ -32,19 +35,18 @@ impl ProcessHandle {
         ProcessHandle { sender }
     }
 
-    fn send_msg(&self, msg: ProcessMsg) {
+    pub fn send(&self, msg: ProcessMsg) {
         let _ = self.sender.send(msg);
     }
 
-    pub fn close_tomato(&self) {
-        self.send_msg(ProcessMsg::TomatoClose)
+    pub fn close_tomato(&self, tomato: Box<Tomato>) {
+        self.send(ProcessMsg::TomatoClose(tomato))
     }
 }
 
-
 struct Process {
     receiver: UnboundedReceiver<ProcessMsg>,
-    app_handle: AppHanlde,
+    app_handle: AppHandle,
 }
 
 impl Process {
@@ -57,15 +59,28 @@ impl Process {
     async fn process_message(&mut self, msg: ProcessMsg) {
         use ProcessMsg::*;
         match msg {
-            TomatoClose => handle_tomota_close(self.app_handle.clone()).await,
+            TomatoClose(t) => handle_tomota_close(t).await,
+            CreateInventory(inv) => self.handle_create_inventory(inv),
+            CreateTask(task) => self.handle_create_task(task),
+            DeleteInventory(id) => DbUtils::delete_inventory(id),
+            DeleteTask(id) => DbUtils::delete_task(id),
         }
+    }
+
+    fn handle_create_inventory(&self, inv: Box<NewInventory>) {
+        let inv = DbUtils::create_new_inventory(&inv.name, inv.color);
+        self.app_handle.send(AppMsg::NewInventory(Box::new(inv)));
+    }
+
+    fn handle_create_task(&self, task: Box<NewTask>) {
+        let task = DbUtils::create_new_task(task.inventory_id, &task.name, task.notes.as_deref());
+        self.app_handle.send(AppMsg::NewTask(Box::new(task)));
     }
 }
 
-
-async fn handle_tomota_close(handle: AppHanlde) {
-    tokio::time::sleep(Duration::from_secs_f32(3.2)).await;
-    handle.notify("write info down to db".to_owned());
+async fn handle_tomota_close(tomato: Box<Tomato>) {
+    let tomato = *tomato;
+    let delta_spent = tomato.end_time - tomato.start_time;
+    DbUtils::update_task_spent(tomato.task_id, delta_spent);
+    DbUtils::create_new_tomato(tomato);
 }
-
-
