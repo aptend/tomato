@@ -32,7 +32,7 @@ async fn main() -> Result<(), io::Error> {
             event = events.next() => {
                 match event {
                     Some(Event::Input(key)) => {
-                        if Key::Char('q') == key {
+                        if app.is_q_quit_enable() && Key::Char('q') == key {
                             break;
                         }
                         app.on_key(key);

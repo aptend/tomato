@@ -125,6 +125,10 @@ impl App {
         self.active_blocks.clear();
     }
 
+    pub fn is_q_quit_enable(&self) -> bool {
+        self.active_block() != ActiveBlock::Input
+    }
+
     pub fn on_key(&mut self, key: Key) {
         if key == Key::Esc && self.notify.is_some() {
             self.notify.take();
