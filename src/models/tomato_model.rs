@@ -57,7 +57,7 @@ impl State {
 
 pub struct TomatoModel {
     handle: AppHandle,
-    process: ProcessHandle,
+    _process: ProcessHandle,
     context: TomatoContext,
     state: State,
     countdown: Countdown,
@@ -77,7 +77,7 @@ impl TomatoModel {
 
         let mut tomato = TomatoModel {
             handle,
-            process,
+            _process: process,
             context,
             state,
             countdown: Countdown::new(Duration::ZERO),
