@@ -25,22 +25,39 @@ impl InventoryModel {
         self.tasks_list.push(Vec::new());
     }
 
+    fn inventory_idx_by_id(&self, id: i32) -> Option<usize> {
+        self.inventory_list
+            .iter()
+            .enumerate()
+            .find(|(_, inv)| inv.id == id)
+            .map(|(idx, _)| idx)
+    }
+
     pub fn push_new_task(&mut self, task: Task) {
-        for (idx, inv) in self.inventory_list.iter().enumerate() {
-            if inv.id == task.inventory_id {
-                self.tasks_list[idx].push(task);
-                return;
-            }
+        if let Some(idx) = self.inventory_idx_by_id(task.inventory_id) {
+            self.tasks_list[idx].push(task);
+        }
+    }
+
+    pub fn delete_task(&mut self, inventory_id: i32, task_id: i32) {
+        if let Some(idx) = self.inventory_idx_by_id(inventory_id) {
+            self.tasks_list[idx].retain(|t| t.id != task_id);
+            self.next_task();
+        }
+    }
+
+    pub fn delete_inventory(&mut self, inventory_id: i32) {
+        if let Some(idx) = self.inventory_idx_by_id(inventory_id) {
+            self.inventory_list.remove(idx);
+            self.task_selected.remove(idx);
+            self.tasks_list.remove(idx);
+            self.next_inventory();
         }
     }
 
     pub fn get_task_location(&self) -> Option<(usize, usize)> {
-        if let Some(iidx) = self.inventory_selected {
-            if let Some(tidx) = self.task_selected[iidx] {
-                return Some((iidx, tidx));
-            }
-        }
-        None
+        self.inventory_selected
+            .and_then(|iidx| self.task_selected[iidx].map(|tidx| (iidx, tidx)))
     }
 
     fn next<T>(&self, selected: Option<usize>, list: &[T]) -> Option<usize> {

@@ -8,7 +8,7 @@ pub enum ProcessMsg {
     CreateInventory(Box<NewInventory>),
     DeleteInventory(i32),
     CreateTask(Box<NewTask>),
-    DeleteTask(i32),
+    DeleteTask((i32, i32)),
 }
 
 #[derive(Clone)]
@@ -62,8 +62,14 @@ impl Process {
             TomatoClose(t) => handle_tomota_close(t).await,
             CreateInventory(inv) => self.handle_create_inventory(inv),
             CreateTask(task) => self.handle_create_task(task),
-            DeleteInventory(id) => DbUtils::delete_inventory(id),
-            DeleteTask(id) => DbUtils::delete_task(id),
+            DeleteInventory(id) => {
+                DbUtils::delete_inventory(id);
+                self.app_handle.send(AppMsg::DeleteInventory(id));
+            }
+            DeleteTask(ids) => {
+                DbUtils::delete_task(ids.1);
+                self.app_handle.send(AppMsg::DeleteTask(ids));
+            }
         }
     }
 

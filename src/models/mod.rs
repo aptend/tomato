@@ -19,9 +19,17 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 pub enum AppMsg {
     Notify(String),
+    // trace: TomatoModel lanuch -> App(append id info) -> IO process
     CloseTomato(Box<Tomato>),
+    // trace: InputModel lanuch -> IO process(determine id) -> App
     NewInventory(Box<Inventory>),
+    // trace: InputModel lanuch -> IO process(determine id) -> App
     NewTask(Box<Task>),
+    // trace: OnKey -> IO process -> App
+    DeleteInventory(i32),
+    // trace: OnKey -> IO process -> App
+    DeleteTask((i32, i32)),
+    // trace: InputModel -> App
     InputEnd,
 }
 
@@ -101,6 +109,8 @@ impl App {
             NewTask(task) => {
                 self.inventory.push_new_task(*task);
             }
+            DeleteInventory(id) => self.inventory.delete_inventory(id),
+            DeleteTask((iid, tid)) => self.inventory.delete_task(iid, tid),
             InputEnd => self.pop_block(),
         }
     }
@@ -181,12 +191,9 @@ fn inventory_list_handle(app: &mut App, key: Key) {
             let inv = Box::new(NewInventory::default());
             app.input.set_context(InputContext::Inventory(inv));
         }
-        Key::Char('d') => {
+        Key::Ctrl('d') => {
             if let Some(idx) = app.inventory.inventory_selected {
-                let inv = app.inventory.inventory_list.remove(idx);
-                app.inventory.task_selected.remove(idx);
-                app.inventory.tasks_list.remove(idx);
-                app.inventory.next_inventory();
+                let inv = &app.inventory.inventory_list[idx];
                 app.process_handle.send(ProcessMsg::DeleteInventory(inv.id));
             }
         }
@@ -213,11 +220,11 @@ fn inventory_task_handle(app: &mut App, key: Key) {
             task.inventory_id = app.inventory.inventory_list[idx].id;
             app.input.set_context(InputContext::Task(task));
         }
-        Key::Char('d') => {
+        Key::Ctrl('d') => {
             if let Some((iidx, tidx)) = app.inventory.get_task_location() {
-                let task = app.inventory.tasks_list[iidx].remove(tidx);
-                app.inventory.next_task();
-                app.process_handle.send(ProcessMsg::DeleteTask(task.id));
+                let task = &app.inventory.tasks_list[iidx][tidx];
+                app.process_handle
+                    .send(ProcessMsg::DeleteTask((task.inventory_id, task.id)));
             }
         }
         _ => {}

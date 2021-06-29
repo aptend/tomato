@@ -1,5 +1,7 @@
+use tui::style::Color;
+
 use crate::{
-    db::{NewInventory, NewTask},
+    db::{DbColor, NewInventory, NewTask},
     process::{ProcessHandle, ProcessMsg},
 };
 
@@ -15,6 +17,35 @@ pub struct InputModel {
     app_hdl: AppHandle,
     context: Option<InputContext>,
     input: String,
+}
+
+fn parse_inv_input(input: &str) -> (&str, i32) {
+    let parts: Vec<_> = input.rsplitn(2, '@').collect();
+    if parts.len() == 1 {
+        (parts[0], 0)
+    } else {
+        let color: DbColor = match parts[0] {
+            "black" => Color::Black,
+            "red" => Color::Red,
+            "green" => Color::Green,
+            "yellow" => Color::Yellow,
+            "blue" => Color::Blue,
+            "magenta" => Color::Magenta,
+            "cyan" => Color::Cyan,
+            "gray" => Color::Gray,
+            "darkgray" => Color::DarkGray,
+            "lightred" => Color::LightRed,
+            "lightgreen" => Color::LightGreen,
+            "lightyellow" => Color::LightYellow,
+            "lightblue" => Color::LightBlue,
+            "lightmagenta" => Color::LightMagenta,
+            "lightcyan" => Color::LightCyan,
+            "white" => Color::White,
+            _ => Color::Reset,
+        }
+        .into();
+        (parts[1], color.into())
+    }
 }
 
 impl InputModel {
@@ -46,14 +77,19 @@ impl InputModel {
     pub fn on_key(&mut self, key: Key) {
         match key {
             Key::Char('\n') => {
-                let name = std::mem::take(&mut self.input);
+                let input = std::mem::take(&mut self.input);
+                if input.is_empty() {
+                    return;
+                }
                 let msg = match self.context.take().unwrap() {
                     InputContext::Inventory(mut base) => {
-                        base.name = name;
+                        let (name, color) = parse_inv_input(&input);
+                        base.name = name.to_owned();
+                        base.color = color;
                         ProcessMsg::CreateInventory(base)
                     }
                     InputContext::Task(mut base) => {
-                        base.name = name;
+                        base.name = input;
                         ProcessMsg::CreateTask(base)
                     }
                 };
