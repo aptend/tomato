@@ -24,6 +24,21 @@ pub struct NewInventory {
     pub color: i32,
 }
 
+#[derive(Default, AsChangeset)]
+#[table_name = "inventory"]
+pub struct EditInventory {
+    pub id: i32,
+    pub name: Option<String>,
+    pub color: Option<i32>,
+}
+
+#[derive(Default, AsChangeset)]
+#[table_name = "tasks"]
+pub struct EditTask {
+    pub id: i32,
+    pub name: Option<String>,
+}
+
 #[derive(Queryable, Identifiable, Associations, Default)]
 #[belongs_to(Inventory)]
 pub struct Task {

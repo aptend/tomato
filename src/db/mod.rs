@@ -107,6 +107,22 @@ impl DbUtils {
             .unwrap();
     }
 
+    pub fn edit_inventory(inv: &EditInventory) {
+        let conn = conn();
+        diesel::update(schema::inventory::table.find(inv.id))
+            .set(inv)
+            .execute(&conn)
+            .unwrap();
+    }
+
+    pub fn edit_task(task: &EditTask) {
+        let conn = conn();
+        diesel::update(schema::tasks::table.find(task.id))
+            .set(task)
+            .execute(&conn)
+            .unwrap();
+    }
+
     pub fn all_inventory() -> Vec<Inventory> {
         let conn = conn();
         schema::inventory::dsl::inventory

@@ -1,14 +1,16 @@
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
-use crate::db::{DbUtils, NewInventory, NewTask, Tomato};
+use crate::db::{DbUtils, EditInventory, EditTask, NewInventory, NewTask, Tomato};
 use crate::models::{AppHandle, AppMsg};
 
 pub enum ProcessMsg {
     TomatoClose(Box<Tomato>),
     CreateInventory(Box<NewInventory>),
     DeleteInventory(i32),
+    UpdateInventory(Box<EditInventory>),
     CreateTask(Box<NewTask>),
-    DeleteTask((i32, i32)),
+    DeleteTask(i32),
+    UpdateTask(Box<EditTask>),
 }
 
 #[derive(Clone)]
@@ -60,27 +62,32 @@ impl Process {
         use ProcessMsg::*;
         match msg {
             TomatoClose(t) => handle_tomota_close(t).await,
-            CreateInventory(inv) => self.handle_create_inventory(inv),
-            CreateTask(task) => self.handle_create_task(task),
+            CreateInventory(inv) => {
+                let inv = DbUtils::create_new_inventory(&inv.name, inv.color);
+                self.app_handle.send(AppMsg::NewInventory(Box::new(inv)));
+            }
+            CreateTask(task) => {
+                let task =
+                    DbUtils::create_new_task(task.inventory_id, &task.name, task.notes.as_deref());
+                self.app_handle.send(AppMsg::NewTask(Box::new(task)));
+            }
             DeleteInventory(id) => {
                 DbUtils::delete_inventory(id);
                 self.app_handle.send(AppMsg::DeleteInventory(id));
             }
-            DeleteTask(ids) => {
-                DbUtils::delete_task(ids.1);
-                self.app_handle.send(AppMsg::DeleteTask(ids));
+            DeleteTask(id) => {
+                DbUtils::delete_task(id);
+                self.app_handle.send(AppMsg::DeleteTask(id));
+            }
+            UpdateInventory(inv) => {
+                DbUtils::edit_inventory(&*inv);
+                self.app_handle.send(AppMsg::EditInventory(inv))
+            }
+            UpdateTask(task) => {
+                DbUtils::edit_task(&*task);
+                self.app_handle.send(AppMsg::EditTask(task))
             }
         }
-    }
-
-    fn handle_create_inventory(&self, inv: Box<NewInventory>) {
-        let inv = DbUtils::create_new_inventory(&inv.name, inv.color);
-        self.app_handle.send(AppMsg::NewInventory(Box::new(inv)));
-    }
-
-    fn handle_create_task(&self, task: Box<NewTask>) {
-        let task = DbUtils::create_new_task(task.inventory_id, &task.name, task.notes.as_deref());
-        self.app_handle.send(AppMsg::NewTask(Box::new(task)));
     }
 }
 

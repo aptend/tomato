@@ -90,8 +90,10 @@ fn draw_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let paragraph = Paragraph::new(app.input.content()).block(
         Block::default()
             .title(match app.input.unwrap_cxt() {
-                InputContext::Inventory(_) => "New inventory entry",
-                InputContext::Task(_) => "New task",
+                InputContext::NewInventory(_) => "New inventory entry",
+                InputContext::NewTask(_) => "New task",
+                InputContext::EditInventory(_) => "Edit inventory entry",
+                InputContext::EditTask(_) => "Edit task",
             })
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(Color::Yellow))

@@ -1,15 +1,17 @@
 use tui::style::Color;
 
 use crate::{
-    db::{DbColor, NewInventory, NewTask},
+    db::{DbColor, EditInventory, EditTask, NewInventory, NewTask},
     process::{ProcessHandle, ProcessMsg},
 };
 
 use super::{AppHandle, AppMsg, Key};
 
 pub enum InputContext {
-    Inventory(Box<NewInventory>),
-    Task(Box<NewTask>),
+    NewInventory(Box<NewInventory>),
+    NewTask(Box<NewTask>),
+    EditTask(Box<EditTask>),
+    EditInventory(Box<EditInventory>),
 }
 
 pub struct InputModel {
@@ -82,15 +84,29 @@ impl InputModel {
                     return;
                 }
                 let msg = match self.context.take().unwrap() {
-                    InputContext::Inventory(mut base) => {
+                    InputContext::NewInventory(mut base) => {
                         let (name, color) = parse_inv_input(&input);
                         base.name = name.to_owned();
-                        base.color = color;
+                        base.color = color.into();
                         ProcessMsg::CreateInventory(base)
                     }
-                    InputContext::Task(mut base) => {
+                    InputContext::NewTask(mut base) => {
                         base.name = input;
                         ProcessMsg::CreateTask(base)
+                    }
+                    InputContext::EditInventory(mut inv) => {
+                        let (name, color) = parse_inv_input(&input);
+                        if !name.is_empty() {
+                            inv.name = Some(name.to_owned());
+                        }
+                        if color != 0 {
+                            inv.color = Some(color);
+                        }
+                        ProcessMsg::UpdateInventory(inv)
+                    }
+                    InputContext::EditTask(mut task) => {
+                        task.name = Some(input);
+                        ProcessMsg::UpdateTask(task)
                     }
                 };
                 self.app_hdl.send(AppMsg::InputEnd);

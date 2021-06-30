@@ -4,7 +4,7 @@ mod navitab_model;
 mod tomato_model;
 
 use crate::{
-    db::{Inventory, NewInventory, NewTask, Task, Tomato},
+    db::{EditInventory, EditTask, Inventory, NewInventory, NewTask, Task, Tomato},
     events::Key,
     process::{ProcessHandle, ProcessMsg},
 };
@@ -28,9 +28,12 @@ pub enum AppMsg {
     // trace: OnKey -> IO process -> App
     DeleteInventory(i32),
     // trace: OnKey -> IO process -> App
-    DeleteTask((i32, i32)),
+    DeleteTask(i32),
     // trace: InputModel -> App
     InputEnd,
+    Callback(fn(&mut App, Vec<u8>)),
+    EditInventory(Box<EditInventory>),
+    EditTask(Box<EditTask>),
 }
 
 #[derive(Clone)]
@@ -110,8 +113,11 @@ impl App {
                 self.inventory.push_new_task(*task);
             }
             DeleteInventory(id) => self.inventory.delete_inventory(id),
-            DeleteTask((iid, tid)) => self.inventory.delete_task(iid, tid),
+            DeleteTask(id) => self.inventory.delete_task(id),
             InputEnd => self.pop_block(),
+            EditInventory(inv) => self.inventory.edit_inventory(inv),
+            EditTask(task) => self.inventory.edit_task(task),
+            Callback(f) => f(self, Vec::new()),
         }
     }
 
@@ -187,14 +193,22 @@ fn inventory_list_handle(app: &mut App, key: Key) {
         }
         Key::Esc => app.pop_block(),
         Key::Ctrl('n') => {
-            app.push_block(ActiveBlock::Input);
             let inv = Box::new(NewInventory::default());
-            app.input.set_context(InputContext::Inventory(inv));
+            app.push_block(ActiveBlock::Input);
+            app.input.set_context(InputContext::NewInventory(inv));
+        }
+        Key::Ctrl('e') => {
+            if let Some(idx) = app.inventory.inventory_selected {
+                let mut inv = Box::new(EditInventory::default());
+                inv.id = app.inventory.inventory_list[idx].id;
+                app.push_block(ActiveBlock::Input);
+                app.input.set_context(InputContext::EditInventory(inv));
+            }
         }
         Key::Ctrl('d') => {
             if let Some(idx) = app.inventory.inventory_selected {
-                let inv = &app.inventory.inventory_list[idx];
-                app.process_handle.send(ProcessMsg::DeleteInventory(inv.id));
+                let id = app.inventory.inventory_list[idx].id;
+                app.process_handle.send(ProcessMsg::DeleteInventory(id));
             }
         }
         _ => {}
@@ -214,17 +228,24 @@ fn inventory_task_handle(app: &mut App, key: Key) {
         }
         Key::Esc | Key::Left => app.pop_block(),
         Key::Ctrl('n') => {
-            app.push_block(ActiveBlock::Input);
             let mut task = Box::new(NewTask::default());
             let idx = app.inventory.inventory_selected.unwrap();
             task.inventory_id = app.inventory.inventory_list[idx].id;
-            app.input.set_context(InputContext::Task(task));
+            app.push_block(ActiveBlock::Input);
+            app.input.set_context(InputContext::NewTask(task));
+        }
+        Key::Ctrl('e') => {
+            if let Some((iidx, tidx)) = app.inventory.get_task_location() {
+                let mut task = Box::new(EditTask::default());
+                task.id = app.inventory.tasks_list[iidx][tidx].id;
+                app.push_block(ActiveBlock::Input);
+                app.input.set_context(InputContext::EditTask(task))
+            }
         }
         Key::Ctrl('d') => {
             if let Some((iidx, tidx)) = app.inventory.get_task_location() {
-                let task = &app.inventory.tasks_list[iidx][tidx];
-                app.process_handle
-                    .send(ProcessMsg::DeleteTask((task.inventory_id, task.id)));
+                let id = app.inventory.tasks_list[iidx][tidx].id;
+                app.process_handle.send(ProcessMsg::DeleteTask(id));
             }
         }
         _ => {}
