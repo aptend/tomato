@@ -87,7 +87,7 @@ impl InputModel {
                     InputContext::NewInventory(mut base) => {
                         let (name, color) = parse_inv_input(&input);
                         base.name = name.to_owned();
-                        base.color = color.into();
+                        base.color = color;
                         ProcessMsg::CreateInventory(base)
                     }
                     InputContext::NewTask(mut base) => {

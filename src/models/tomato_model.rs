@@ -40,7 +40,7 @@ struct State {
 impl State {
     fn new(long_break_interval: usize) -> Self {
         use CountdownType::*;
-        let mut states = [Focus, ShortBreak].repeat(long_break_interval.saturating_sub(1).into());
+        let mut states = [Focus, ShortBreak].repeat(long_break_interval.saturating_sub(1));
         states.extend(&[Focus, LongBreak]);
         State { states, idx: 0 }
     }

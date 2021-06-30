@@ -31,7 +31,7 @@ pub enum AppMsg {
     DeleteTask(i32),
     // trace: InputModel -> App
     InputEnd,
-    Callback(fn(&mut App, Vec<u8>)),
+    _Callback(fn(&mut App, Vec<u8>)),
     EditInventory(Box<EditInventory>),
     EditTask(Box<EditTask>),
 }
@@ -117,7 +117,7 @@ impl App {
             InputEnd => self.pop_block(),
             EditInventory(inv) => self.inventory.edit_inventory(inv),
             EditTask(task) => self.inventory.edit_task(task),
-            Callback(f) => f(self, Vec::new()),
+            _Callback(f) => f(self, Vec::new()),
         }
     }
 
@@ -173,10 +173,11 @@ fn navi_handle(app: &mut App, key: Key) {
             _ => {}
         },
 
-        TabType::Inventory => match key {
-            Key::Char('\n') => app.push_block(ActiveBlock::InventoryList),
-            _ => {}
-        },
+        TabType::Inventory => {
+            if let Key::Char('\n') = key {
+                app.push_block(ActiveBlock::InventoryList);
+            }
+        }
 
         TabType::Statistics => {}
     }

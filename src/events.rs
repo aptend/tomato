@@ -40,12 +40,10 @@ impl Events {
 
         std::thread::spawn(move || {
             let stdin = io::stdin();
-            for evt in stdin.keys() {
-                if let Ok(key) = evt {
-                    let _ = tx.send(Event::Input(key));
-                    if key == Key::Ctrl('c') {
-                        break;
-                    }
+            for key in stdin.keys().flatten() {
+                let _ = tx.send(Event::Input(key));
+                if key == Key::Ctrl('c') {
+                    break;
                 }
             }
         });
