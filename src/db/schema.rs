@@ -27,4 +27,8 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(inventory, tasks, tomatos,);
+allow_tables_to_appear_in_same_query!(
+    inventory,
+    tasks,
+    tomatos,
+);
